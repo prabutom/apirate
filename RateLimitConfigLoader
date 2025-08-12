@@ -1,0 +1,58 @@
+public class RateLimitConfigLoader {
+
+    private static final Logger log = LoggerFactory.getLogger(RateLimitConfigLoader.class);
+
+    private final Map<String, CustomRateLimitProperties.EndpointRateLimit> endpointLimits = new HashMap<>();
+
+    private static final int DEFAULT_DAILY_CAPACITY = 400;
+    private static final int DEFAULT_MINUTE_CAPACITY = 100;
+    private static final int DEFAULT_MINUTE_DURATION = 1;
+
+    @SuppressWarnings("unchecked")
+    public RateLimitConfigLoader() {
+        try (InputStream input = new ClassPathResource("application.yml").getInputStream()) {
+            Yaml yaml = new Yaml();
+            Map<String, Object> root = yaml.load(input);
+
+            Map<String, Object> rateLimiter = (Map<String, Object>) root.get("rate-limiter");
+            if (rateLimiter != null && rateLimiter.containsKey("endpoints")) {
+                Map<String, Object> endpoints = (Map<String, Object>) rateLimiter.get("endpoints");
+                for (Map.Entry<String, Object> entry : endpoints.entrySet()) {
+                    String key = entry.getKey();
+                    Map<String, Object> config = (Map<String, Object>) entry.getValue();
+
+                    CustomRateLimitProperties.EndpointRateLimit rateLimit = new CustomRateLimitProperties.EndpointRateLimit();
+
+                    rateLimit.setMinuteCapacity(parseOrDefault(config.get("minute-capacity"),DEFAULT_MINUTE_CAPACITY));
+                    rateLimit.setMinuteDuration(parseOrDefault(config.get("minute-duration"),DEFAULT_MINUTE_DURATION));
+                    rateLimit.setDailyCapacity(parseOrDefault(config.get("daily-capacity"),DEFAULT_DAILY_CAPACITY));
+
+                    String rateLimitConfig =  "Minute Capacity: " + rateLimit.getMinuteCapacity() +
+                            ", Minute Duration: " + rateLimit.getMinuteDuration() +
+                            ", Daily Capacity: " + rateLimit.getDailyCapacity();
+                    endpointLimits.put(key, rateLimit);
+                    log.info("Registered rate-limit config: {} with limits {}", key, rateLimitConfig);
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load rate limit configuration", e);
+        }
+    }
+
+    private int parseOrDefault(Object value, int defaultValue) {
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        if (value instanceof String) {
+            try {
+                return Integer.parseInt((String) value);
+            } catch (NumberFormatException e) {
+                return defaultValue;// ignore and return default
+            }
+        }
+        return defaultValue;
+    }
+    public Map<String, CustomRateLimitProperties.EndpointRateLimit> getEndpointLimits() {
+        return Collections.unmodifiableMap(endpointLimits);
+    }
+}
