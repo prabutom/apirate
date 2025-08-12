@@ -1,0 +1,31 @@
+@ConditionalOnProperty(name = "rate-limiter.enabled", havingValue = "true", matchIfMissing = true)
+public class CustomRateLimitingFilter implements Filter {
+
+    private final CustomRateLimitConfig customRateLimitConfig;
+
+    public CustomRateLimitingFilter(CustomRateLimitConfig customRateLimitConfig) {
+        this.customRateLimitConfig = customRateLimitConfig;
+    }
+
+    @Override
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
+
+        HttpServletRequest httpRequest = (HttpServletRequest) request;
+        HttpServletResponse httpResponse = (HttpServletResponse) response;
+
+        String method = httpRequest.getMethod();
+        String fullPath = httpRequest.getRequestURI();
+        String contextPath = httpRequest.getContextPath();
+        String relativePath = fullPath.substring(contextPath.length());
+
+        Bucket bucket = customRateLimitConfig.resolveBucket(method, relativePath);
+
+        if (bucket == null || bucket.tryConsume(1)){
+            chain.doFilter(request, response);
+        }
+        else {
+            httpResponse.setStatus(429);
+            httpResponse.getWriter().write("Too Many Requests - Rate limit exceeded");
+        }
+    }
+}
